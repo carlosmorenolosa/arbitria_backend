@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
+
 # Carga las variables definidas en backend/.env
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
@@ -38,9 +39,11 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 app = FastAPI(title="Asistente de Reglamento Arbitral")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST"],
+    allow_origins=["*"],            # puedes limitar a tu dominio final si quieres
+    allow_credentials=True,
+    allow_methods=["*"],            # GET, POST, OPTIONS…
     allow_headers=["*"],
+    expose_headers=["*"],           # si quieres exponer headers al cliente
 )
 # Ya no montamos carpeta local StaticFiles
 
