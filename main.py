@@ -1,4 +1,5 @@
-import os, re
+import os
+import re
 from pathlib import Path
 from typing import List, Literal
 
@@ -6,28 +7,29 @@ import google.generativeai as genai
 from pinecone import Pinecone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+# StaticFiles removed: now PDFs served from S3
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from pathlib import Path
 
 # Carga las variables definidas en backend/.env
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
-
 
 # ─── Configuración ───────────────────────────────────────────────────────────
 GENAI_API_KEY = os.getenv("GENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = os.getenv("INDEX_NAME", "reglamento-arbitral")
-PDF_FOLDER = os.getenv("PDF_FOLDER", "reglamento_arbitral")
+# Leemos la URL base del bucket S3
+PDF_BASE_URL = os.getenv("PDF_BASE_URL")
 
 if not (GENAI_API_KEY and PINECONE_API_KEY):
     raise RuntimeError("Faltan GENAI_API_KEY o PINECONE_API_KEY en el entorno.")
+if not PDF_BASE_URL:
+    raise RuntimeError("Falta PDF_BASE_URL en el entorno.")
 
 # Inicializa APIs
 genai.configure(api_key=GENAI_API_KEY)
 pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc = pc = pc = None
+index = pc = None
 pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(INDEX_NAME)
 model = genai.GenerativeModel("gemini-2.0-flash")
@@ -40,8 +42,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-# Monta PDFs estáticos
-app.mount("/pdfs", StaticFiles(directory=PDF_FOLDER), name="pdfs")
+# Ya no montamos carpeta local StaticFiles
 
 # ─── Modelos Pydantic ─────────────────────────────────────────────────────────
 class ChatMessage(BaseModel):
@@ -129,10 +130,11 @@ def chat(req: ChatRequest):
     except Exception as e:
         raise HTTPException(500, f"Error generando respuesta: {e}")
 
-    parsed = []
+    parsed: List[FragmentOut] = []
     for m in frags:
         fname = m.metadata.get("nombre_original", "unk.pdf")
-        pdf_url = f"/pdfs/{fname}"
+        # Construye URL pública apuntando a S3
+        pdf_url = f"{PDF_BASE_URL}/{fname}"
         page = m.metadata.get("page")
         parsed.append(FragmentOut(
             nombre_original=fname,
