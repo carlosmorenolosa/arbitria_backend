@@ -39,11 +39,9 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 app = FastAPI(title="Asistente de Reglamento Arbitral")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],            # puedes limitar a tu dominio final si quieres
-    allow_credentials=True,
-    allow_methods=["*"],            # GET, POST, OPTIONS…
-    allow_headers=["*"],
-    expose_headers=["*"],           # si quieres exponer headers al cliente
+    allow_origins=["*"],        # permitir cualquier origen
+    allow_methods=["*"],        # permitir todos los métodos (GET, POST, OPTIONS…)
+    allow_headers=["*"],        # permitir todos los headers
 )
 # Ya no montamos carpeta local StaticFiles
 
