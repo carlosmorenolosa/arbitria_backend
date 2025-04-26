@@ -1,5 +1,4 @@
 import os
-import re
 from pathlib import Path
 from typing import List, Literal
 
@@ -7,20 +6,17 @@ import google.generativeai as genai
 from pinecone import Pinecone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-# StaticFiles removed: now PDFs served from S3
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
 
 # Carga las variables definidas en backend/.env
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 # ─── Configuración ───────────────────────────────────────────────────────────
-GENAI_API_KEY = os.getenv("GENAI_API_KEY")
+GENAI_API_KEY    = os.getenv("GENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("INDEX_NAME", "reglamento-arbitral")
-# Leemos la URL base del bucket S3
-PDF_BASE_URL = os.getenv("PDF_BASE_URL")
+INDEX_NAME       = os.getenv("INDEX_NAME", "reglamento-arbitral")
+PDF_BASE_URL     = os.getenv("PDF_BASE_URL")
 
 if not (GENAI_API_KEY and PINECONE_API_KEY):
     raise RuntimeError("Faltan GENAI_API_KEY o PINECONE_API_KEY en el entorno.")
@@ -29,9 +25,7 @@ if not PDF_BASE_URL:
 
 # Inicializa APIs
 genai.configure(api_key=GENAI_API_KEY)
-pc = Pinecone(api_key=PINECONE_API_KEY)
-index = pc = None
-pc = Pinecone(api_key=PINECONE_API_KEY)
+pc    = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(INDEX_NAME)
 model = genai.GenerativeModel("gemini-2.0-flash")
 
@@ -39,11 +33,10 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 app = FastAPI(title="Asistente de Reglamento Arbitral")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # permitir cualquier origen
-    allow_methods=["*"],        # permitir todos los métodos (GET, POST, OPTIONS…)
-    allow_headers=["*"],        # permitir todos los headers
+    allow_origins=["*"],   # permitir cualquier origen
+    allow_methods=["*"],   # permitir todos los métodos
+    allow_headers=["*"],   # permitir todos los headers
 )
-# Ya no montamos carpeta local StaticFiles
 
 # ─── Modelos Pydantic ─────────────────────────────────────────────────────────
 class ChatMessage(BaseModel):
@@ -59,6 +52,7 @@ class FragmentOut(BaseModel):
     texto: str
     page: int | None = None
     pdf_url: str
+    score: float     # <-- añadimos score
 
 class ChatResponse(BaseModel):
     answer: str
@@ -72,7 +66,6 @@ def vectorize_query(text: str) -> List[float]:
     )
     return emb["embedding"]
 
-
 def retrieve_fragments(query_vector, top_k=5):
     res = index.query(
         vector=query_vector,
@@ -81,14 +74,15 @@ def retrieve_fragments(query_vector, top_k=5):
     )
     return res.matches
 
-
 def format_prompt(query: str, fragments, history: List[ChatMessage]) -> str:
     context = "\n\n".join(
-        f"Fragmento {i+1} (de {m.metadata.get('nombre_original','documento desconocido')}):\n{m.metadata.get('texto','')}"
+        f"Fragmento {i+1} (de {m.metadata.get('nombre_original','documento desconocido')}):\n"
+        f"{m.metadata.get('texto','')}"
         for i, m in enumerate(fragments)
     )
     hist = "\n\n".join(
-        f"{'Usuario' if h.role=='user' else 'Asistente'}: {h.content}" for h in history
+        f"{'Usuario' if h.role=='user' else 'Asistente'}: {h.content}"
+        for h in history
     )
     prompt = f"""
 Eres un asistente especializado en reglamentos arbitrales. Tu objetivo es proporcionar respuestas precisas y útiles basadas únicamente en los documentos de referencia proporcionados.
@@ -118,30 +112,34 @@ RESPUESTA:
 # ─── Endpoint principal ───────────────────────────────────────────────────────
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
+    # 1) Recuperar fragmentos
     try:
         q_vec = vectorize_query(req.query)
         frags = retrieve_fragments(q_vec, top_k=5)
     except Exception as e:
         raise HTTPException(500, f"Error al recuperar fragments: {e}")
 
+    # 2) Generar respuesta
     full_prompt = format_prompt(req.query, frags, req.history)
     try:
-        gen = model.generate_content(full_prompt)
+        gen    = model.generate_content(full_prompt)
         answer = gen.candidates[0].content.parts[0].text
     except Exception as e:
         raise HTTPException(500, f"Error generando respuesta: {e}")
 
+    # 3) Formatear fragments de salida incluyendo `score`
     parsed: List[FragmentOut] = []
     for m in frags:
-        fname = m.metadata.get("nombre_original", "unk.pdf")
-        # Construye URL pública apuntando a S3
+        fname   = m.metadata.get("nombre_original", "unk.pdf")
         pdf_url = f"{PDF_BASE_URL}/{fname}"
-        page = m.metadata.get("page")
+        page    = m.metadata.get("page")
+        score   = m.score  # puntuación de Pinecone (0.0–1.0)
         parsed.append(FragmentOut(
             nombre_original=fname,
             texto=m.metadata.get("texto", ""),
             page=page,
-            pdf_url=pdf_url
+            pdf_url=pdf_url,
+            score=score
         ))
 
     return ChatResponse(answer=answer, fragments=parsed)
