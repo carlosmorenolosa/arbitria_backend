@@ -92,7 +92,7 @@ INSTRUCCIONES:
 2. Utiliza ÚNICAMENTE la información proporcionada en los fragmentos de contexto para responder.
 3. Si la información en los fragmentos no es suficiente para responder la consulta completa, indica qué partes puedes responder y qué información no dispones.
 4. No inventes ni supongas información que no esté en los fragmentos.
-5. Cita las fuentes de manera clara.
+5. Cita las fuentes de manera clara, pero no nombres números de páginas. 
 6. Responde en español con un tono profesional pero accesible.
 7. Si la pregunta no está relacionada con reglamentos arbitrales, indica amablemente que estás especializado en ese tema.
 
